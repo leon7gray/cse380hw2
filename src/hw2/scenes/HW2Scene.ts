@@ -107,7 +107,7 @@ export default class HW2Scene extends Scene {
 
 	// The padding of the world
 	private worldPadding: Vec2;
-
+	private record: BasicRecording;
 	/** Scene lifecycle methods */
 
 	/**
@@ -116,6 +116,7 @@ export default class HW2Scene extends Scene {
 	public override initScene(options: Record<string, any>): void {
 		this.seed = options.seed === undefined ? RandUtils.randomSeed() : options.seed;
         this.recording = options.recording === undefined ? false : options.recording; 
+	
 	}
 	/**
 	 * @see Scene.loadScene()
@@ -166,9 +167,12 @@ export default class HW2Scene extends Scene {
 		this.receiver.subscribe(HW2Events.CHARGE_CHANGE);
 		this.receiver.subscribe(HW2Events.SHOOT_LASER);
 		this.receiver.subscribe(HW2Events.DEAD);
+		this.receiver.subscribe(HW2Events.UPDATE_HP);
+		this.receiver.subscribe(HW2Events.UPDATE_AIR);
 
 		// Subscribe to laser events
 		this.receiver.subscribe(HW2Events.FIRING_LASER);
+		this.emitter.fireEvent(GameEventType.START_RECORDING, {recording: this.record});
 	}
 	/**
 	 * @see Scene.updateScene 
@@ -182,10 +186,12 @@ export default class HW2Scene extends Scene {
 		
 		// Move the backgrounds
 		this.moveBackgrounds(deltaT);
-
+		this.wrapPlayer(this.player, this.viewport.getCenter(), this.viewport.getHalfSize());
+		this.lockPlayer(this.player, this.viewport.getCenter(), this.viewport.getHalfSize());
 		// Handles mine and bubble collisions
 		this.handleMinePlayerCollisions();
 		this.bubblesPopped += this.handleBubblePlayerCollisions();
+
 
 		// Handle timers
 		this.handleTimers();
@@ -223,6 +229,7 @@ export default class HW2Scene extends Scene {
 				break;
 			}
 			case HW2Events.DEAD: {
+				//this.emitter.fireEvent(GameEventType.STOP_RECORDING);
 				this.gameOverTimer.start();
 				break;
 			}
@@ -232,6 +239,14 @@ export default class HW2Scene extends Scene {
 			}
 			case HW2Events.FIRING_LASER: {
 				this.minesDestroyed += this.handleMineLaserCollisions(event.data.get("laser"), this.mines);
+				break;
+			}
+			case HW2Events.UPDATE_HP: {
+				this.handleHealthChange(event.data.get("curhlth"), event.data.get("maxhlth"));
+				break;
+			}
+			case HW2Events.UPDATE_AIR: {
+				this.handleAirChange(event.data.get("curair"), event.data.get("maxair"));
 				break;
 			}
 			default: {
@@ -537,7 +552,21 @@ export default class HW2Scene extends Scene {
 	 * 							X THIS IS OUT OF BOUNDS
 	 */
 	protected spawnBubble(): void {
-		// TODO spawn bubbles!
+		let bubble: Graphic = this.bubbles.find((bubble: Graphic) => { return !bubble.visible });
+
+		if (bubble){
+			bubble.visible = true;
+			let paddedViewportSize = this.viewport.getHalfSize().scaled(2).add(this.worldPadding);
+			let viewportSize = this.viewport.getHalfSize().scaled(2);
+			bubble.position.copy(RandUtils.randVec(paddedViewportSize.x - viewportSize.x, viewportSize.x, viewportSize.y, paddedViewportSize.y));
+			while(bubble.position.distanceTo(this.player.position) < 100){
+				bubble.position.copy(RandUtils.randVec(paddedViewportSize.x - viewportSize.x, viewportSize.x, viewportSize.y, paddedViewportSize.y));
+			}
+
+			bubble.setAIActive(true, {});
+			this.bubbleSpawnTimer.start(100);
+
+		}
 	}
 	/**
 	 * This function takes in a GameNode that may be out of bounds of the viewport and
@@ -583,7 +612,12 @@ export default class HW2Scene extends Scene {
 	 * It may be helpful to make your own drawings while figuring out the math for this part.
 	 */
 	public handleScreenDespawn(node: CanvasNode): void {
-        // TODO - despawn the game nodes when they move out of the padded viewport
+		let paddedViewportSize = this.viewport.getHalfSize().scaled(2).add(this.worldPadding);
+		let viewportSize = this.viewport.getHalfSize().scaled(2);
+		if (node.position.x < (viewportSize.x - paddedViewportSize.x) || node.position.y < (viewportSize.y - paddedViewportSize.y))
+		{
+			node.visible = false;
+		}   
 	}
 
 	/** Methods for updating the UI */
@@ -698,7 +732,7 @@ export default class HW2Scene extends Scene {
 	 * | GREEN | GREEN |  RED  |  RED  |
 	 * |_______|_______|_______|_______|
 	 * 
-	 * After waiting for a recharge
+	 * After waiting for a rechargeheckAABB
 	 *  _______ _______ _______ _______
 	 * | GREEN | GREEN | GREEN |  RED  |
 	 * |_______|_______|_______|_______|
@@ -735,8 +769,18 @@ export default class HW2Scene extends Scene {
 	 * an AABB and a Circle
 	 */
 	public handleBubblePlayerCollisions(): number {
-		// TODO check for collisions between the player and the bubbles
-        return;
+		let collisions = 0;
+		for (let bubble of this.bubbles) {
+			if (this.player.collisionShape instanceof AABB && bubble.collisionShape instanceof Circle)
+			{
+				if (bubble.visible && HW2Scene.checkAABBtoCircleCollision(this.player.collisionShape, bubble.collisionShape)) {
+					collisions += 1;
+					bubble.visible = false;
+				}
+			}
+		}
+		this.emitter.fireEvent(HW2Events.PLAYER_BUBBLE_COLLISON, {numBubbles: collisions});
+		return collisions;
 	}
 
 	/**
@@ -763,7 +807,7 @@ export default class HW2Scene extends Scene {
 				this.emitter.fireEvent(HW2Events.PLAYER_MINE_COLLISION, {id: mine.id});
 				collisions += 1;
 			}
-		}	
+		}
 		return collisions;
 	}
 
@@ -809,8 +853,17 @@ export default class HW2Scene extends Scene {
 	 * @see MathUtils for more information about MathUtil functions
 	 */
 	public static checkAABBtoCircleCollision(aabb: AABB, circle: Circle): boolean {
-        // TODO implement collision detection for AABBs and Circles
-        return;
+		let dx = aabb.x - circle.x;
+		let px = circle.hw + aabb.hw - Math.abs(dx);	
+		if(px <= 0){
+			return false;
+		}
+		let dy = aabb.y - circle.y;
+		let py = circle.hh + aabb.hh - Math.abs(dy);
+		if(py <= 0){
+			return false;
+		}
+		return true;
 	}
 
     /** Methods for locking and wrapping nodes */
@@ -860,7 +913,14 @@ export default class HW2Scene extends Scene {
 	 * 							X THIS IS OUT OF BOUNDS													
 	 */
 	protected wrapPlayer(player: CanvasNode, viewportCenter: Vec2, viewportHalfSize: Vec2): void {
-		// TODO wrap the player around the top/bottom of the screen
+		if (player.position.y < (viewportCenter.y - viewportHalfSize.y))
+		{
+			player.position.set(player.position.x, viewportCenter.y + viewportHalfSize.y);
+		}
+		else if (player.position.y > (viewportCenter.y + viewportHalfSize.y))
+		{
+			player.position.set(player.position.x, viewportCenter.y - viewportHalfSize.y);
+		}
 	}
 
     /**
@@ -903,7 +963,14 @@ export default class HW2Scene extends Scene {
 	 * 
 	 */
 	protected lockPlayer(player: CanvasNode, viewportCenter: Vec2, viewportHalfSize: Vec2): void {
-		// TODO prevent the player from moving off the left/right side of the screen
+		if (player.position.x < (viewportCenter.x - viewportHalfSize.x))
+		{
+			player.position.set(viewportCenter.x - viewportHalfSize.x, player.position.y);
+		}
+		else if (player.position.x > (viewportCenter.x + viewportHalfSize.x))
+		{
+			player.position.set(viewportCenter.x + viewportHalfSize.x, player.position.y);
+		}
 	}
 
 	public handleTimers(): void {

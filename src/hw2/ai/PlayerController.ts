@@ -41,6 +41,9 @@ export default class PlayerController implements AI {
 
 	/** A timer for charging the player's laser cannon thing */
 	private laserTimer: Timer;
+	private invincibleTimer: Timer;
+	private invincible: boolean;
+	private died: boolean;
 
 	// A receiver and emitter to hook into the event queue
 	private receiver: Receiver;
@@ -59,8 +62,13 @@ export default class PlayerController implements AI {
 		this.emitter = new Emitter();
 
 		this.laserTimer = new Timer(2500, this.handleLaserTimerEnd, false);
+		this.invincibleTimer = new Timer(1000, this.handleInvincibleTimerEnd, false);
+		this.invincible = false;
 		
 		this.receiver.subscribe(HW2Events.SHOOT_LASER);
+		this.receiver.subscribe(HW2Events.PLAYER_MINE_COLLISION);
+		//this.receiver.subscribe(HW2Events.DEAD);
+		this.receiver.subscribe(HW2Events.PLAYER_BUBBLE_COLLISON);
 
 		this.activate(options);
 	}
@@ -85,7 +93,7 @@ export default class PlayerController implements AI {
 
         // Set the player's movement speed
         this.currentSpeed = 300
-
+		this.died = false;
         // Play the idle animation by default
 		this.owner.animation.play(PlayerAnimations.IDLE);
 	};
@@ -113,10 +121,16 @@ export default class PlayerController implements AI {
 		while(this.receiver.hasNextEvent()){
 			this.handleEvent(this.receiver.getNextEvent());
 		}
-
+		this.emitter.fireEvent(HW2Events.UPDATE_HP, {curhlth: this.currentHealth, maxhlth: this.maxHealth});
+		this.emitter.fireEvent(HW2Events.UPDATE_AIR, {curair: this.currentAir, maxair: this.maxAir});
         // If the player is out of hp - play the death animation
 		if (this.currentHealth <= this.minHealth) { 
-            this.emitter.fireEvent(HW2Events.DEAD);
+			this.owner.animation.play(PlayerAnimations.DEATH, true);
+			if (this.died == false)
+			{
+				this.died = true;
+				this.emitter.fireEvent(HW2Events.DEAD);
+			}
             return;
         }
 
@@ -153,6 +167,14 @@ export default class PlayerController implements AI {
 		switch(event.type) {
 			case HW2Events.SHOOT_LASER: {
 				this.handleShootLaserEvent(event);
+				break;
+			}
+			case HW2Events.PLAYER_MINE_COLLISION: {
+				this.handlePlayerMineCollision(event);
+				break;
+			}
+			case HW2Events.PLAYER_BUBBLE_COLLISON: {
+				this.handlePlayerBubbleCollision(event);
 				break;
 			}
 			default: {
@@ -192,6 +214,24 @@ export default class PlayerController implements AI {
 		}
 	}
 
+	protected handlePlayerMineCollision(event: GameEvent) {
+		this.owner.animation.playIfNotAlready(PlayerAnimations.HIT, false);
+		if (this.invincible == false)
+		{
+			this.invincible = true;
+			this.currentHealth--;
+			this.invincibleTimer.start();
+		}
+	}
+
+	protected handleInvincibleTimerEnd = () => {
+		this.owner.animation.playIfNotAlready(PlayerAnimations.IDLE);
+		this.invincible = false;
+	}
+
+	protected handlePlayerBubbleCollision(event: GameEvent) {
+		this.currentAir += event.data.get("numBubbles");
+	}
 } 
 
 

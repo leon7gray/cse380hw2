@@ -9,6 +9,7 @@ import GameEvent from "../../Wolfie2D/Events/GameEvent";
 
 import RandUtils from "../../Wolfie2D/Utils/RandUtils";
 import { GameEventType } from "../../Wolfie2D/Events/GameEventType";
+import BasicRecording from "../../Wolfie2D/Playback/BasicRecording";
 
 // Layers in the main menu
 const MainMenuLayer = {
@@ -31,6 +32,7 @@ export default class MainMenu extends Scene {
     private mainMenu: Layer;
     private controls: Layer;
     private about: Layer;
+    private recording: BasicRecording;
 
     public override startScene(){
         const center = this.viewport.getCenter();
@@ -158,7 +160,7 @@ export default class MainMenu extends Scene {
                 break;
             }
             case MainMenuEvent.PLAY_RECORDING: {
-                // TODO play the recording here
+                this.emitter.fireEvent(GameEventType.PLAY_RECORDING);
                 break;
             }
             default: {
