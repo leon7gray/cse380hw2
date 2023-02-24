@@ -116,7 +116,7 @@ export default class HW2Scene extends Scene {
 	public override initScene(options: Record<string, any>): void {
 		this.seed = options.seed === undefined ? RandUtils.randomSeed() : options.seed;
         this.recording = options.recording === undefined ? false : options.recording; 
-	
+		RandUtils.seed = this.seed;
 	}
 	/**
 	 * @see Scene.loadScene()
@@ -145,6 +145,7 @@ export default class HW2Scene extends Scene {
 	 * @see Scene.startScene()
 	 */
 	public override startScene(){
+		
 		this.worldPadding = new Vec2(64, 64);
 
 		// Create a background layer
@@ -172,7 +173,9 @@ export default class HW2Scene extends Scene {
 
 		// Subscribe to laser events
 		this.receiver.subscribe(HW2Events.FIRING_LASER);
+		this.record = new BasicRecording(HW2Scene, {recording: this.recording, seed: this.seed,});
 		this.emitter.fireEvent(GameEventType.START_RECORDING, {recording: this.record});
+		this.recording = false;
 	}
 	/**
 	 * @see Scene.updateScene 
@@ -229,7 +232,7 @@ export default class HW2Scene extends Scene {
 				break;
 			}
 			case HW2Events.DEAD: {
-				//this.emitter.fireEvent(GameEventType.STOP_RECORDING);
+				this.emitter.fireEvent(GameEventType.STOP_RECORDING);
 				this.gameOverTimer.start();
 				break;
 			}
@@ -989,6 +992,7 @@ export default class HW2Scene extends Scene {
 				minesDestroyed: this.minesDestroyed,
 				timePassed: this.timePassed
 			}, {});
+			
 		}
 	}
 
