@@ -31,6 +31,7 @@ import BasicRecording from "../../Wolfie2D/Playback/BasicRecording";
 
 import { HW2Events } from "../HW2Events";
 import Layer from "../../Wolfie2D/Scene/Layer";
+import MainMenu from "./MainMenu";
 
 /**
  * A type for layers in the HW3Scene. It seems natural to want to use some kind of enum type to
@@ -173,9 +174,12 @@ export default class HW2Scene extends Scene {
 
 		// Subscribe to laser events
 		this.receiver.subscribe(HW2Events.FIRING_LASER);
-		this.record = new BasicRecording(HW2Scene, {recording: this.recording, seed: this.seed,});
-		this.emitter.fireEvent(GameEventType.START_RECORDING, {recording: this.record});
-		this.recording = false;
+		
+		if (this.recording)
+		{
+			this.record = new BasicRecording(HW2Scene, {recording: false, seed: this.seed,});
+			this.emitter.fireEvent(GameEventType.START_RECORDING, {recording: this.record});
+		}
 	}
 	/**
 	 * @see Scene.updateScene 
@@ -987,12 +991,18 @@ export default class HW2Scene extends Scene {
 		}
 		// If the game-over timer has run, change to the game-over scene
 		if (this.gameOverTimer.hasRun() && this.gameOverTimer.isStopped()) {
-		 	this.sceneManager.changeToScene(GameOver, {
-				bubblesPopped: this.bubblesPopped, 
-				minesDestroyed: this.minesDestroyed,
-				timePassed: this.timePassed
-			}, {});
-			
+			if (this.recording)
+			{
+		 		this.sceneManager.changeToScene(GameOver, {
+					bubblesPopped: this.bubblesPopped, 
+					minesDestroyed: this.minesDestroyed,
+					timePassed: this.timePassed
+				}, {});
+			}
+			else
+			{
+				this.sceneManager.changeToScene(MainMenu);
+			}
 		}
 	}
 
